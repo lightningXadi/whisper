@@ -1,7 +1,7 @@
 // ---- Auth guard ----
 const token = localStorage.getItem('whisper_token');
 const me = JSON.parse(localStorage.getItem('whisper_user') || 'null');
-if (!token || !me) window.location.replace('login.html');
+if (!token || !me) window.location.href = 'login.html';
 
 initFogCanvas('fog-canvas');
 
@@ -23,44 +23,12 @@ const els = {
   sendBtn: document.getElementById('send-btn'),
   headerName: document.getElementById('chat-header-name'),
   headerAvatar: document.getElementById('chat-header-avatar'),
-  headerStatus: document.getElementById('chat-header-status'),
+  headerDot: document.getElementById('chat-header-dot'),
   headerStatusText: document.getElementById('chat-header-status-text'),
   typingIndicator: document.getElementById('typing-indicator'),
   typingText: document.getElementById('typing-text'),
-  callBtn: document.getElementById('call-btn'),
-  backBtn: document.getElementById('back-btn'),
-  appShell: document.getElementById('app-shell'),
-  profileTrigger: document.getElementById('profile-trigger'),
-  profileMenu: document.getElementById('profile-menu'),
-  profileAvatar: document.getElementById('profile-avatar'),
-  profileName: document.getElementById('profile-name'),
-  logoutBtn: document.getElementById('logout-btn')
+  callBtn: document.getElementById('call-btn')
 };
-
-// ---- Profile / logout ----
-els.profileAvatar.innerHTML = avatarHTML(me.avatarSeed || 'fox', 'sm');
-els.profileName.textContent = me.name || 'You';
-
-els.profileTrigger.addEventListener('click', (e) => {
-  e.stopPropagation();
-  els.profileMenu.classList.toggle('open');
-  els.profileTrigger.classList.toggle('open');
-});
-document.addEventListener('click', () => {
-  els.profileMenu.classList.remove('open');
-  els.profileTrigger.classList.remove('open');
-});
-
-els.logoutBtn.addEventListener('click', () => {
-  localStorage.removeItem('whisper_token');
-  localStorage.removeItem('whisper_user');
-  window.location.replace('login.html');
-});
-
-// ---- Mobile back navigation ----
-els.backBtn.addEventListener('click', () => {
-  els.appShell.classList.remove('chat-open');
-});
 
 function timeStr(dateStr) {
   const d = new Date(dateStr);
@@ -100,14 +68,13 @@ async function openConversation(convo) {
   activeConversation = { id: convo._id, otherUser: otherParticipant(convo) };
   els.emptyState.style.display = 'none';
   els.activeChat.style.display = 'flex';
-  els.appShell.classList.add('chat-open');
   renderConvoList();
 
   const other = activeConversation.otherUser;
   els.headerName.textContent = other.name;
   els.headerAvatar.innerHTML = avatarHTML(other.avatarSeed, 'sm');
-  els.headerStatus.classList.toggle('online', !!other.isOnline);
-  els.headerStatusText.textContent = other.isOnline ? 'Active now' : (other.status || 'Offline');
+  els.headerDot.classList.toggle('online', !!other.isOnline);
+  els.headerStatusText.textContent = other.isOnline ? 'Present in the clearing' : (other.status || 'Resting in the Bracken');
 
   const history = await Api.messages(convo._id);
   els.messages.innerHTML = '';
@@ -186,8 +153,8 @@ socket.on('presence:update', ({ userId, isOnline }) => {
   if (activeConversation) {
     const otherId = activeConversation.otherUser.id || activeConversation.otherUser._id;
     if (otherId === userId) {
-      els.headerStatus.classList.toggle('online', isOnline);
-      els.headerStatusText.textContent = isOnline ? 'Active now' : 'Offline';
+      els.headerDot.classList.toggle('online', isOnline);
+      els.headerStatusText.textContent = isOnline ? 'Present in the clearing' : 'Resting in the Bracken';
     }
   }
   loadConversations();
@@ -224,7 +191,6 @@ els.searchInput.addEventListener('input', function () {
 });
 
 document.getElementById('new-chat-btn').addEventListener('click', () => {
-  els.appShell.classList.remove('chat-open');
   els.searchInput.focus();
 });
 
