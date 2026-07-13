@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whisper — Begin your journey</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div id="transition-overlay"><div class="msg">Stepping into the mist…</div></div>
+
+<div class="auth-wrap">
+  <div class="auth-visual">
+    <div class="fog-canvas-wrap" id="fog-canvas" style="position:absolute;"></div>
+    <div class="auth-wordmark">🦊 Whisper</div>
+    <blockquote>"Every voice finds its clearing eventually."</blockquote>
+  </div>
+  <div class="auth-form-side">
+    <div class="auth-form">
+      <h1>Begin your journey</h1>
+      <p class="sub">Say less. Mean more.</p>
+      <div class="auth-error" id="error-box"></div>
+      <form id="signup-form">
+        <div class="field">
+          <input type="text" id="name" placeholder=" " required>
+          <label>What shall we call you?</label>
+        </div>
+        <div class="field">
+          <input type="email" id="email" placeholder=" " required>
+          <label>Your way back in</label>
+        </div>
+        <div class="field">
+          <input type="password" id="password" placeholder=" " minlength="6" required>
+          <label>Choose a secret key</label>
+        </div>
+        <button type="submit" class="btn btn-primary auth-submit" id="submit-btn">Step inside</button>
+      </form>
+      <div class="auth-links">
+        <span></span>
+        <a href="login.html">Already have a path? Log in</a>
+      </div>
+      <div class="auth-divider">or</div>
+      <div class="google-btn-wrap" id="google-btn"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/fog.js"></script>
+<script src="js/api.js"></script>
+<script src="js/transition.js"></script>
+<script>
+initFogCanvas('fog-canvas');
+
+const form = document.getElementById('signup-form');
+const errorBox = document.getElementById('error-box');
+const submitBtn = document.getElementById('submit-btn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errorBox.style.display = 'none';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Planting roots…';
+  try {
+    const name = document.getElementById('name').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const { token, user } = await Api.signup(name, email, password);
+    localStorage.setItem('whisper_token', token);
+    localStorage.setItem('whisper_user', JSON.stringify(user));
+    await playEnterTransition();
+    window.location.href = 'chat.html';
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.style.display = 'block';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Step inside';
+  }
+});
+
+if (window.WHISPER_GOOGLE_CLIENT_ID) {
+  window.onload = () => {
+    google.accounts.id.initialize({
+      client_id: window.WHISPER_GOOGLE_CLIENT_ID,
+      callback: async (resp) => {
+        try {
+          const { token, user } = await Api.google(resp.credential);
+          localStorage.setItem('whisper_token', token);
+          localStorage.setItem('whisper_user', JSON.stringify(user));
+          await playEnterTransition();
+          window.location.href = 'chat.html';
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.style.display = 'block';
+        }
+      }
+    });
+    google.accounts.id.renderButton(document.getElementById('google-btn'), { theme: 'outline', size: 'large', shape: 'pill' });
+  };
+}
+</script>
+</body>
+</html>
