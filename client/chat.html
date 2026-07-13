@@ -20,6 +20,20 @@
     </div>
     <div id="search-results" class="convo-list" style="display:none; border-bottom:1px solid rgba(255,255,255,0.05); max-height:220px;"></div>
     <div class="convo-list" id="convo-list"></div>
+
+    <div class="sidebar-footer">
+      <div class="profile-menu" id="profile-menu">
+        <button id="logout-btn" class="logout">🚪 Log out</button>
+      </div>
+      <button class="profile-trigger" id="profile-trigger">
+        <div id="profile-avatar"></div>
+        <div class="profile-name-wrap">
+          <div class="name" id="profile-name">—</div>
+          <div class="sub">View profile</div>
+        </div>
+        <span class="profile-caret">▲</span>
+      </button>
+    </div>
   </aside>
 
   <section class="chat-main" id="chat-main">
@@ -31,11 +45,11 @@
     <div id="active-chat" style="display:none; flex-direction:column; height:100%;">
       <div class="chat-header">
         <div class="chat-header-left">
+          <button class="back-btn" id="back-btn" title="Back">←</button>
           <div id="chat-header-avatar"></div>
           <div>
             <h3 class="chat-header-name" id="chat-header-name">—</h3>
-            <div class="chat-header-status">
-              <span class="status-dot" id="chat-header-dot"></span>
+            <div class="chat-header-status" id="chat-header-status">
               <span id="chat-header-status-text">Resting in the Bracken</span>
             </div>
           </div>
@@ -104,12 +118,8 @@
 
 <audio id="remote-audio" autoplay></audio>
 
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="js/config.js"></script>
-<script>
-  // Load the Socket.IO client straight from our own backend — avoids
-  // relying on an external CDN that may be blocked on some networks.
-  document.write('<script src="' + (window.WHISPER_API_URL || 'http://localhost:5000') + '/socket.io/socket.io.js"><\/script>');
-</script>
 <script src="js/fog.js"></script>
 <script src="js/api.js"></script>
 <script src="js/avatar.js"></script>
