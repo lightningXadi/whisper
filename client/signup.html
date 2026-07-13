@@ -51,10 +51,6 @@
 <script src="js/api.js"></script>
 <script src="js/transition.js"></script>
 <script>
-if (localStorage.getItem('whisper_token') && localStorage.getItem('whisper_user')) {
-  window.location.replace('chat.html');
-}
-
 initFogCanvas('fog-canvas');
 
 const form = document.getElementById('signup-form');
@@ -74,7 +70,7 @@ form.addEventListener('submit', async (e) => {
     localStorage.setItem('whisper_token', token);
     localStorage.setItem('whisper_user', JSON.stringify(user));
     await playEnterTransition();
-    window.location.replace('chat.html');
+    window.location.href = 'chat.html';
   } catch (err) {
     errorBox.textContent = err.message;
     errorBox.style.display = 'block';
@@ -93,7 +89,7 @@ if (window.WHISPER_GOOGLE_CLIENT_ID) {
           localStorage.setItem('whisper_token', token);
           localStorage.setItem('whisper_user', JSON.stringify(user));
           await playEnterTransition();
-          window.location.replace('chat.html');
+          window.location.href = 'chat.html';
         } catch (err) {
           errorBox.textContent = err.message;
           errorBox.style.display = 'block';
