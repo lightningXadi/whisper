@@ -13,7 +13,22 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <h2>Recent Echoes</h2>
-      <button id="new-chat-btn" title="Start a new conversation" class="btn btn-ghost" style="padding:8px 12px;">+ New</button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button id="new-chat-btn" title="Start a new conversation" class="btn btn-ghost" style="padding:8px 12px;">+ New</button>
+        <div class="profile-menu-wrap">
+          <button id="profile-btn" title="Profile"></button>
+          <div class="profile-dropdown" id="profile-dropdown">
+            <div class="profile-dropdown-header">
+              <div id="profile-dropdown-avatar"></div>
+              <div>
+                <div class="profile-dropdown-name" id="profile-dropdown-name">—</div>
+                <div class="profile-dropdown-email" id="profile-dropdown-email">—</div>
+              </div>
+            </div>
+            <button id="logout-btn" class="profile-dropdown-item">Log out</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="sidebar-search">
       <input type="text" id="user-search" placeholder="Find someone to whisper to…">
@@ -31,13 +46,11 @@
     <div id="active-chat" style="display:none; flex-direction:column; height:100%;">
       <div class="chat-header">
         <div class="chat-header-left">
+          <button id="back-btn" class="back-btn" title="Back">←</button>
           <div id="chat-header-avatar"></div>
           <div>
             <h3 class="chat-header-name" id="chat-header-name">—</h3>
-            <div class="chat-header-status">
-              <span class="status-dot" id="chat-header-dot"></span>
-              <span id="chat-header-status-text">Resting in the Bracken</span>
-            </div>
+            <div class="chat-header-status" id="chat-header-status-text">Offline</div>
           </div>
         </div>
         <div class="chat-header-actions" style="display:flex; gap:6px;">
