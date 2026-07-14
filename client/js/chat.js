@@ -9,6 +9,25 @@ window.addEventListener('pageshow', () => {
   if (!localStorage.getItem('whisper_token')) window.location.replace('login.html');
 });
 
+// ---- Trap the mobile back button inside the app ----
+// Runs immediately (before anything else) so the very first back-press
+// after landing on this page is already caught. A conversation open on
+// mobile gets closed on back-press; otherwise back-press does nothing.
+// The only way out of the app is the explicit Log out button.
+(function trapBackButton() {
+  function pushGuard() {
+    history.pushState({ whisperTrap: true }, '', location.href);
+  }
+  pushGuard();
+  window.addEventListener('popstate', () => {
+    pushGuard();
+    const shell = document.getElementById('app-shell');
+    if (window.innerWidth <= 860 && shell && shell.classList.contains('chat-open')) {
+      shell.classList.remove('chat-open');
+    }
+  });
+})();
+
 initFogCanvas('fog-canvas');
 
 // ---- Socket connection ----
@@ -99,17 +118,6 @@ function setHeaderStatus(isOnline) {
 // In-app back arrow: return to the conversation list without losing state
 els.backBtn.addEventListener('click', () => {
   els.appShell.classList.remove('chat-open');
-});
-
-// Trap the mobile back button inside the app: closing an open conversation
-// on the first press, and never falling through to a previous page like
-// login/signup. Only the explicit Log out button leaves the app.
-history.pushState({ whisperApp: true }, '', location.href);
-window.addEventListener('popstate', () => {
-  history.pushState({ whisperApp: true }, '', location.href);
-  if (window.innerWidth <= 860 && els.appShell.classList.contains('chat-open')) {
-    els.appShell.classList.remove('chat-open');
-  }
 });
 
 function renderMessage(msg) {
