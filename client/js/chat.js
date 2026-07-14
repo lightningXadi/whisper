@@ -96,9 +96,20 @@ function setHeaderStatus(isOnline) {
   els.headerStatusText.classList.toggle('online', isOnline);
 }
 
-// Mobile back button: return to the conversation list without losing state
+// In-app back arrow: return to the conversation list without losing state
 els.backBtn.addEventListener('click', () => {
   els.appShell.classList.remove('chat-open');
+});
+
+// Trap the mobile back button inside the app: closing an open conversation
+// on the first press, and never falling through to a previous page like
+// login/signup. Only the explicit Log out button leaves the app.
+history.pushState({ whisperApp: true }, '', location.href);
+window.addEventListener('popstate', () => {
+  history.pushState({ whisperApp: true }, '', location.href);
+  if (window.innerWidth <= 860 && els.appShell.classList.contains('chat-open')) {
+    els.appShell.classList.remove('chat-open');
+  }
 });
 
 function renderMessage(msg) {
@@ -204,10 +215,6 @@ els.searchInput.addEventListener('input', function () {
     });
     els.searchResults.style.display = 'block';
   }, 300);
-});
-
-document.getElementById('new-chat-btn').addEventListener('click', () => {
-  els.searchInput.focus();
 });
 
 // ---- Profile menu + logout ----
