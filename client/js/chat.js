@@ -1,7 +1,13 @@
 // ---- Auth guard ----
 const token = localStorage.getItem('whisper_token');
 const me = JSON.parse(localStorage.getItem('whisper_user') || 'null');
-if (!token || !me) window.location.href = 'login.html';
+if (!token || !me) window.location.replace('login.html');
+
+// If the user hits browser-back after logging out, bfcache can restore this
+// page from memory even though localStorage is empty — re-check on show.
+window.addEventListener('pageshow', () => {
+  if (!localStorage.getItem('whisper_token')) window.location.replace('login.html');
+});
 
 initFogCanvas('fog-canvas');
 
@@ -23,11 +29,14 @@ const els = {
   sendBtn: document.getElementById('send-btn'),
   headerName: document.getElementById('chat-header-name'),
   headerAvatar: document.getElementById('chat-header-avatar'),
-  headerDot: document.getElementById('chat-header-dot'),
   headerStatusText: document.getElementById('chat-header-status-text'),
   typingIndicator: document.getElementById('typing-indicator'),
   typingText: document.getElementById('typing-text'),
-  callBtn: document.getElementById('call-btn')
+  callBtn: document.getElementById('call-btn'),
+  appShell: document.getElementById('app-shell'),
+  backBtn: document.getElementById('back-btn'),
+  profileBtn: document.getElementById('profile-btn'),
+  profileDropdown: document.getElementById('profile-dropdown')
 };
 
 function timeStr(dateStr) {
@@ -68,19 +77,29 @@ async function openConversation(convo) {
   activeConversation = { id: convo._id, otherUser: otherParticipant(convo) };
   els.emptyState.style.display = 'none';
   els.activeChat.style.display = 'flex';
+  els.appShell.classList.add('chat-open'); // mobile: hide sidebar, show chat
   renderConvoList();
 
   const other = activeConversation.otherUser;
   els.headerName.textContent = other.name;
   els.headerAvatar.innerHTML = avatarHTML(other.avatarSeed, 'sm');
-  els.headerDot.classList.toggle('online', !!other.isOnline);
-  els.headerStatusText.textContent = other.isOnline ? 'Present in the clearing' : (other.status || 'Resting in the Bracken');
+  setHeaderStatus(!!other.isOnline);
 
   const history = await Api.messages(convo._id);
   els.messages.innerHTML = '';
   history.forEach(renderMessage);
   scrollToBottom();
 }
+
+function setHeaderStatus(isOnline) {
+  els.headerStatusText.textContent = isOnline ? 'Online' : 'Offline';
+  els.headerStatusText.classList.toggle('online', isOnline);
+}
+
+// Mobile back button: return to the conversation list without losing state
+els.backBtn.addEventListener('click', () => {
+  els.appShell.classList.remove('chat-open');
+});
 
 function renderMessage(msg) {
   const mine = msg.sender === me.id || msg.sender?._id === me.id;
@@ -152,10 +171,7 @@ socket.on('typing:stop', ({ conversationId }) => {
 socket.on('presence:update', ({ userId, isOnline }) => {
   if (activeConversation) {
     const otherId = activeConversation.otherUser.id || activeConversation.otherUser._id;
-    if (otherId === userId) {
-      els.headerDot.classList.toggle('online', isOnline);
-      els.headerStatusText.textContent = isOnline ? 'Present in the clearing' : 'Resting in the Bracken';
-    }
+    if (otherId === userId) setHeaderStatus(isOnline);
   }
   loadConversations();
 });
@@ -194,11 +210,27 @@ document.getElementById('new-chat-btn').addEventListener('click', () => {
   els.searchInput.focus();
 });
 
-// ---- Call button wiring (see call.js for WebRTC logic) ----
-els.callBtn.addEventListener('click', () => {
-  if (!activeConversation) return;
-  const other = activeConversation.otherUser;
-  startOutgoingCall(other.id || other._id, other.name, other.avatarSeed, activeConversation.id);
+// ---- Profile menu + logout ----
+document.getElementById('profile-dropdown-name').textContent = me.name;
+document.getElementById('profile-dropdown-email').textContent = me.email;
+document.getElementById('profile-dropdown-avatar').innerHTML = avatarHTML(me.avatarSeed, 'sm');
+els.profileBtn.innerHTML = avatarHTML(me.avatarSeed);
+
+els.profileBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  els.profileDropdown.classList.toggle('active');
+});
+document.addEventListener('click', (e) => {
+  if (!els.profileDropdown.contains(e.target) && e.target !== els.profileBtn) {
+    els.profileDropdown.classList.remove('active');
+  }
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  socket.disconnect();
+  localStorage.removeItem('whisper_token');
+  localStorage.removeItem('whisper_user');
+  window.location.replace('login.html');
 });
 
 loadConversations();
