@@ -1,242 +1,276 @@
-// Audio-only WebRTC calling, signaled over the same Socket.IO connection
-// used for chat. Reads `window.socket` (set by chat.js) directly instead of
-// polling — avoids cross-script timing issues entirely.
-
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    // TURN relay — required when both sides are behind carrier-grade NAT
-    // (very common on Indian mobile networks like Jio/Airtel). Without this,
-    // calls can "ring" successfully (signaling works) but no audio ever
-    // flows, because the direct STUN-only P2P connection silently fails.
-    { urls: 'stun:openrelay.metered.ca:80' },
-    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-  ],
-  iceCandidatePoolSize: 4
-};
-
-let pc = null;
-let localStream = null;
-let callTimerInterval = null;
-let callSeconds = 0;
-let currentCall = null; // { peerId, peerName, peerAvatar, conversationId, isCaller }
-
-const callOverlay = document.getElementById('call-overlay');
-const incomingCard = document.getElementById('incoming-call-card');
-const remoteAudio = document.getElementById('remote-audio');
-
-function fmtTime(s) {
-  const m = Math.floor(s / 60).toString().padStart(2, '0');
-  const sec = (s % 60).toString().padStart(2, '0');
-  return `${m}:${sec}`;
-}
-
-function startCallTimer() {
-  callSeconds = 0;
-  document.getElementById('call-timer').textContent = fmtTime(0);
-  callTimerInterval = setInterval(() => {
-    callSeconds++;
-    document.getElementById('call-timer').textContent = fmtTime(callSeconds);
-  }, 1000);
-}
-function stopCallTimer() {
-  clearInterval(callTimerInterval);
-}
-
-function showCallOverlay(peerName, peerAvatar, statusLabel, badgeText) {
-  document.getElementById('call-peer-name').textContent = peerName;
-  document.getElementById('call-avatar').innerHTML = avatarHTML(peerAvatar, 'lg');
-  document.getElementById('call-status-label').textContent = statusLabel;
-  document.getElementById('call-badge').textContent = badgeText;
-  callOverlay.classList.add('active');
-}
-function hideCallOverlay() {
-  callOverlay.classList.remove('active');
-  stopCallTimer();
-}
-
-async function getMic() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('This browser does not support microphone access (getUserMedia unavailable). Try a modern Chrome/Firefox/Safari and make sure the site is loaded over HTTPS.');
-  }
-  return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-}
-
-function createPeerConnection(peerId) {
-  const conn = new RTCPeerConnection(RTC_CONFIG);
-  conn.onicecandidate = (e) => {
-    if (e.candidate) window.socket.emit('call:ice-candidate', { toUserId: peerId, candidate: e.candidate });
-  };
-  conn.ontrack = (e) => {
-    console.log('Remote audio track received.');
-    remoteAudio.srcObject = e.streams[0];
-  };
-  conn.oniceconnectionstatechange = () => {
-    console.log('ICE connection state:', conn.iceConnectionState);
-  };
-  conn.onicegatheringstatechange = () => {
-    console.log('ICE gathering state:', conn.iceGatheringState);
-  };
-  conn.onconnectionstatechange = () => {
-    console.log('Call connection state:', conn.connectionState);
-    if (['disconnected', 'failed', 'closed'].includes(conn.connectionState)) {
-      endCall(false);
-    }
-  };
-  return conn;
-}
-
-async function startOutgoingCall(peerId, peerName, peerAvatar, conversationId) {
-  if (!window.socket || !window.socket.connected) {
-    alert('Not connected to the server yet — please wait a moment and try again.');
+// Guard against this script being loaded twice (e.g. a leftover duplicate
+// <script> tag from a manual file merge) — an IIFE keeps all the const/let/
+// function declarations safely scoped, so a second load just no-ops instead
+// of throwing a redeclaration error.
+(function () {
+  if (window.__whisperChatLoaded) {
+    console.warn('chat.js loaded twice — skipping duplicate execution.');
     return;
   }
-  if (currentCall) return alert('Already in a call.');
+  window.__whisperChatLoaded = true;
 
-  try {
-    currentCall = { peerId, peerName, peerAvatar, conversationId, isCaller: true };
-    showCallOverlay(peerName, peerAvatar, 'Reaching Out', 'Calling…');
-    document.getElementById('call-timer').textContent = '';
+// ---- Auth guard ----
+const token = localStorage.getItem('whisper_token');
+const me = JSON.parse(localStorage.getItem('whisper_user') || 'null');
+if (!token || !me) window.location.replace('login.html');
 
-    localStream = await getMic();
-    pc = createPeerConnection(peerId);
-    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    window.socket.emit('call:invite', { toUserId: peerId, conversationId, offer });
-  } catch (err) {
-    console.error('Failed to start call:', err);
-    alert(err.message.includes('Permission') || err.name === 'NotAllowedError'
-      ? 'Microphone access was blocked. Please allow microphone permission for this site and try again.'
-      : `Could not start the call: ${err.message}`);
-    currentCall = null;
-    hideCallOverlay();
-  }
-}
-
-async function acceptIncomingCall() {
-  incomingCard.classList.remove('active');
-  const { fromUserId, offer, conversationId, fromName, fromAvatar } = window.__incomingCallData;
-  currentCall = { peerId: fromUserId, peerName: fromName, peerAvatar: fromAvatar, conversationId, isCaller: false };
-
-  try {
-    showCallOverlay(fromName, fromAvatar, 'In Communion', 'Echoing…');
-    localStream = await getMic();
-    pc = createPeerConnection(fromUserId);
-    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    window.socket.emit('call:answer', { toUserId: fromUserId, answer });
-    startCallTimer();
-  } catch (err) {
-    console.error('Failed to accept call:', err);
-    alert('Could not join the call: ' + err.message);
-    endCall(true);
-  }
-}
-
-function declineIncomingCall() {
-  incomingCard.classList.remove('active');
-  const { fromUserId } = window.__incomingCallData || {};
-  if (fromUserId && window.socket) window.socket.emit('call:decline', { toUserId: fromUserId });
-  window.__incomingCallData = null;
-}
-
-function endCall(notifyPeer = true) {
-  if (notifyPeer && currentCall && window.socket) window.socket.emit('call:end', { toUserId: currentCall.peerId });
-  if (pc) { pc.close(); pc = null; }
-  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-  remoteAudio.srcObject = null;
-  currentCall = null;
-  hideCallOverlay();
-}
-
-document.getElementById('end-call-btn').addEventListener('click', () => endCall(true));
-
-let muted = false;
-document.getElementById('mute-btn').addEventListener('click', function () {
-  if (!localStream) return;
-  muted = !muted;
-  localStream.getAudioTracks().forEach(t => t.enabled = !muted);
-  this.querySelector('.circle').style.color = muted ? 'var(--danger)' : '';
-  this.querySelector('.label').textContent = muted ? 'Unmute' : 'Mute';
+// If the user hits browser-back after logging out, bfcache can restore this
+// page from memory even though localStorage is empty — re-check on show.
+window.addEventListener('pageshow', () => {
+  if (!localStorage.getItem('whisper_token')) window.location.replace('login.html');
 });
 
-document.getElementById('speaker-btn').addEventListener('click', function () {
-  // Browser-level speaker routing is limited on web; this is a soft toggle
-  // that mutes/unmutes the remote audio element as a simple stand-in.
-  remoteAudio.muted = !remoteAudio.muted;
-  this.querySelector('.label').textContent = remoteAudio.muted ? 'Unmute Out' : 'Speaker';
+// ---- Trap the mobile back button inside the app ----
+// Runs immediately (before anything else) so the very first back-press
+// after landing on this page is already caught. A conversation open on
+// mobile gets closed on back-press; otherwise back-press does nothing.
+// The only way out of the app is the explicit Log out button.
+(function trapBackButton() {
+  function pushGuard() {
+    history.pushState({ whisperTrap: true }, '', location.href);
+  }
+  pushGuard();
+  window.addEventListener('popstate', () => {
+    pushGuard();
+    const shell = document.getElementById('app-shell');
+    if (window.innerWidth <= 860 && shell && shell.classList.contains('chat-open')) {
+      shell.classList.remove('chat-open');
+    }
+  });
+})();
+
+initFogCanvas('fog-canvas');
+
+// ---- Socket connection ----
+const socket = io(window.WHISPER_API_URL, { auth: { token } });
+window.socket = socket; // exposed for call.js — avoids cross-script TDZ timing issues
+socket.on('connect_error', (err) => {
+  console.error('Socket connection failed:', err.message);
 });
 
-document.getElementById('icc-accept').addEventListener('click', acceptIncomingCall);
-document.getElementById('icc-decline').addEventListener('click', declineIncomingCall);
+let activeConversation = null; // { id, otherUser }
+let conversations = [];        // cached list from server
+let typingTimeout = null;
 
-// Wire up socket listeners as soon as window.socket exists. chat.js sets
-// window.socket synchronously right when it loads (script tag right after
-// this one), so this resolves almost immediately — but we still poll
-// window.socket (a plain property, no TDZ risk) as a safety net.
-function attachCallSocketListeners() {
-  const s = window.socket;
+const els = {
+  convoList: document.getElementById('convo-list'),
+  searchInput: document.getElementById('user-search'),
+  searchResults: document.getElementById('search-results'),
+  emptyState: document.getElementById('empty-state'),
+  activeChat: document.getElementById('active-chat'),
+  messages: document.getElementById('messages'),
+  messageInput: document.getElementById('message-input'),
+  sendBtn: document.getElementById('send-btn'),
+  headerName: document.getElementById('chat-header-name'),
+  headerAvatar: document.getElementById('chat-header-avatar'),
+  headerStatusText: document.getElementById('chat-header-status-text'),
+  typingIndicator: document.getElementById('typing-indicator'),
+  typingText: document.getElementById('typing-text'),
+  callBtn: document.getElementById('call-btn'),
+  appShell: document.getElementById('app-shell'),
+  backBtn: document.getElementById('back-btn'),
+  profileBtn: document.getElementById('profile-btn'),
+  profileDropdown: document.getElementById('profile-dropdown')
+};
 
-  s.on('call:incoming', async ({ fromUserId, conversationId, offer }) => {
-    if (currentCall) {
-      s.emit('call:decline', { toUserId: fromUserId });
-      return;
-    }
-    let fromName = 'Someone', fromAvatar = 'fox';
-    const convoList = window.conversations || [];
-    const convo = convoList.find(c => c._id === conversationId);
-    if (convo) {
-      const other = convo.participants.find(p => (p._id || p.id) === fromUserId);
-      if (other) { fromName = other.name; fromAvatar = other.avatarSeed; }
-    }
-    window.__incomingCallData = { fromUserId, offer, conversationId, fromName, fromAvatar };
-    document.getElementById('incoming-call-name').textContent = fromName;
-    document.getElementById('incoming-call-avatar').innerHTML = avatarHTML(fromAvatar, 'sm');
-    incomingCard.classList.add('active');
-  });
-
-  s.on('call:answered', async ({ answer }) => {
-    if (!pc) return;
-    await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    showCallOverlay(currentCall.peerName, currentCall.peerAvatar, 'In Communion', 'Echoing…');
-    startCallTimer();
-  });
-
-  s.on('call:ice-candidate', async ({ candidate }) => {
-    if (pc && candidate) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.warn(e); }
-    }
-  });
-
-  s.on('call:declined', () => {
-    alert('They are not able to talk right now.');
-    endCall(false);
-  });
-
-  s.on('call:ended', () => {
-    endCall(false);
-  });
-
-  console.log('Call signaling listeners attached.');
+function timeStr(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-(function waitForSocket() {
-  if (window.socket) {
-    attachCallSocketListeners();
-  } else {
-    const check = setInterval(() => {
-      if (window.socket) {
-        clearInterval(check);
-        attachCallSocketListeners();
-      }
-    }, 30);
+function otherParticipant(convo) {
+  return convo.participants.find(p => p._id !== me.id && p.id !== me.id) || convo.participants[0];
+}
+
+async function loadConversations() {
+  conversations = await Api.conversations();
+  window.conversations = conversations;
+  renderConvoList();
+}
+
+function renderConvoList() {
+  els.convoList.innerHTML = '';
+  conversations.forEach(convo => {
+    const other = otherParticipant(convo);
+    const div = document.createElement('div');
+    div.className = 'convo-item' + (activeConversation?.id === convo._id ? ' active' : '');
+    div.innerHTML = `
+      ${avatarHTML(other.avatarSeed)}
+      <div class="convo-meta">
+        <div class="convo-top">
+          <span class="name">${other.name}</span>
+          <span class="time">${convo.lastMessageAt ? timeStr(convo.lastMessageAt) : ''}</span>
+        </div>
+        <div class="convo-preview">${convo.lastMessage || 'Say hello…'}</div>
+      </div>`;
+    div.addEventListener('click', () => openConversation(convo));
+    els.convoList.appendChild(div);
+  });
+}
+
+async function openConversation(convo) {
+  activeConversation = { id: convo._id, otherUser: otherParticipant(convo) };
+  els.emptyState.style.display = 'none';
+  els.activeChat.style.display = 'flex';
+  els.appShell.classList.add('chat-open'); // mobile: hide sidebar, show chat
+  renderConvoList();
+
+  const other = activeConversation.otherUser;
+  els.headerName.textContent = other.name;
+  els.headerAvatar.innerHTML = avatarHTML(other.avatarSeed, 'sm');
+  setHeaderStatus(!!other.isOnline);
+
+  const history = await Api.messages(convo._id);
+  els.messages.innerHTML = '';
+  history.forEach(renderMessage);
+  scrollToBottom();
+}
+
+function setHeaderStatus(isOnline) {
+  els.headerStatusText.textContent = isOnline ? 'Online' : 'Offline';
+  els.headerStatusText.classList.toggle('online', isOnline);
+}
+
+// In-app back arrow: return to the conversation list without losing state
+els.backBtn.addEventListener('click', () => {
+  els.appShell.classList.remove('chat-open');
+});
+
+function renderMessage(msg) {
+  const mine = msg.sender === me.id || msg.sender?._id === me.id;
+  const row = document.createElement('div');
+  row.className = 'msg-row' + (mine ? ' mine' : '');
+  row.innerHTML = `<div class="bubble">${escapeHtml(msg.text)}<span class="time">${timeStr(msg.createdAt)}</span></div>`;
+  els.messages.appendChild(row);
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function scrollToBottom() {
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+// ---- Sending messages ----
+function sendMessage() {
+  const text = els.messageInput.value.trim();
+  if (!text || !activeConversation) return;
+  socket.emit('message:send', { conversationId: activeConversation.id, text }, (res) => {
+    if (res?.error) alert(res.error);
+  });
+  els.messageInput.value = '';
+  els.messageInput.style.height = 'auto';
+  socket.emit('typing:stop', { conversationId: activeConversation.id, toUserId: activeConversation.otherUser.id || activeConversation.otherUser._id });
+}
+
+els.sendBtn.addEventListener('click', sendMessage);
+els.messageInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+els.messageInput.addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = this.scrollHeight + 'px';
+  if (!activeConversation) return;
+  const otherId = activeConversation.otherUser.id || activeConversation.otherUser._id;
+  socket.emit('typing:start', { conversationId: activeConversation.id, toUserId: otherId });
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    socket.emit('typing:stop', { conversationId: activeConversation.id, toUserId: otherId });
+  }, 1500);
+});
+
+// ---- Socket events ----
+socket.on('message:new', (msg) => {
+  if (activeConversation && msg.conversation === activeConversation.id) {
+    renderMessage(msg);
+    scrollToBottom();
   }
+  loadConversations();
+});
+
+socket.on('typing:start', ({ conversationId }) => {
+  if (activeConversation && conversationId === activeConversation.id) {
+    els.typingText.textContent = `${activeConversation.otherUser.name} is wandering…`;
+    els.typingIndicator.style.display = 'flex';
+  }
+});
+socket.on('typing:stop', ({ conversationId }) => {
+  if (activeConversation && conversationId === activeConversation.id) {
+    els.typingIndicator.style.display = 'none';
+  }
+});
+
+socket.on('presence:update', ({ userId, isOnline }) => {
+  if (activeConversation) {
+    const otherId = activeConversation.otherUser.id || activeConversation.otherUser._id;
+    if (otherId === userId) setHeaderStatus(isOnline);
+  }
+  loadConversations();
+});
+
+// ---- New conversation / user search ----
+let searchTimeout = null;
+els.searchInput.addEventListener('input', function () {
+  clearTimeout(searchTimeout);
+  const q = this.value.trim();
+  if (!q) { els.searchResults.style.display = 'none'; return; }
+  searchTimeout = setTimeout(async () => {
+    const users = await Api.searchUsers(q);
+    els.searchResults.innerHTML = '';
+    if (users.length === 0) {
+      els.searchResults.innerHTML = `<div style="padding:16px; color:var(--text-muted); font-size:13px;">No one found in the woods.</div>`;
+    }
+    users.forEach(u => {
+      const div = document.createElement('div');
+      div.className = 'convo-item';
+      div.innerHTML = `${avatarHTML(u.avatarSeed)}<div class="convo-meta"><div class="name">${u.name}</div><div class="convo-preview">${u.email}</div></div>`;
+      div.addEventListener('click', async () => {
+        const convo = await Api.startConversation(u._id);
+        els.searchInput.value = '';
+        els.searchResults.style.display = 'none';
+        await loadConversations();
+        const fresh = conversations.find(c => c._id === convo._id) || convo;
+        openConversation(fresh);
+      });
+      els.searchResults.appendChild(div);
+    });
+    els.searchResults.style.display = 'block';
+  }, 300);
+});
+
+// ---- Call button wiring (see call.js for WebRTC logic) ----
+els.callBtn.addEventListener('click', () => {
+  if (!activeConversation) return;
+  const other = activeConversation.otherUser;
+  window.startOutgoingCall(other.id || other._id, other.name, other.avatarSeed, activeConversation.id);
+});
+
+// ---- Profile menu + logout ----
+document.getElementById('profile-dropdown-name').textContent = me.name;
+document.getElementById('profile-dropdown-email').textContent = me.email;
+document.getElementById('profile-dropdown-avatar').innerHTML = avatarHTML(me.avatarSeed, 'sm');
+els.profileBtn.innerHTML = avatarHTML(me.avatarSeed);
+
+els.profileBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  els.profileDropdown.classList.toggle('active');
+});
+document.addEventListener('click', (e) => {
+  if (!els.profileDropdown.contains(e.target) && e.target !== els.profileBtn) {
+    els.profileDropdown.classList.remove('active');
+  }
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  socket.disconnect();
+  localStorage.removeItem('whisper_token');
+  localStorage.removeItem('whisper_user');
+  window.location.replace('login.html');
+});
+
+loadConversations();
+
 })();
