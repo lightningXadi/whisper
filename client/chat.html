@@ -116,14 +116,33 @@
 
 <script src="js/config.js"></script>
 <script>
-  // Load the Socket.IO client straight from our own backend — avoids
-  // relying on an external CDN that may be blocked on some networks.
-  document.write('<script src="' + (window.WHISPER_API_URL || 'http://localhost:5000') + '/socket.io/socket.io.js"><\/script>');
+  // Load scripts in order without document.write (which Chrome flags/blocks
+  // for cross-origin scripts on slow connections). Each script loads only
+  // after the previous one finishes, preserving the dependency order.
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.body.appendChild(s);
+    });
+  }
+
+  (async function bootstrap() {
+    try {
+      const apiUrl = window.WHISPER_API_URL || 'http://localhost:5000';
+      await loadScript(apiUrl + '/socket.io/socket.io.js');
+      await loadScript('js/fog.js');
+      await loadScript('js/api.js');
+      await loadScript('js/avatar.js');
+      await loadScript('js/call.js');
+      await loadScript('js/chat.js');
+    } catch (err) {
+      console.error(err);
+      alert('Whisper could not connect to the server. Please check your connection and refresh.');
+    }
+  })();
 </script>
-<script src="js/fog.js"></script>
-<script src="js/api.js"></script>
-<script src="js/avatar.js"></script>
-<script src="js/call.js"></script>
-<script src="js/chat.js"></script>
 </body>
 </html>
