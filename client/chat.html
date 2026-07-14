@@ -13,25 +13,22 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <h2>Recent Echoes</h2>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <button id="new-chat-btn" title="Start a new conversation" class="btn btn-ghost" style="padding:8px 12px;">+ New</button>
-        <div class="profile-menu-wrap">
-          <button id="profile-btn" title="Profile"></button>
-          <div class="profile-dropdown" id="profile-dropdown">
-            <div class="profile-dropdown-header">
-              <div id="profile-dropdown-avatar"></div>
-              <div>
-                <div class="profile-dropdown-name" id="profile-dropdown-name">—</div>
-                <div class="profile-dropdown-email" id="profile-dropdown-email">—</div>
-              </div>
+      <div class="profile-menu-wrap">
+        <button id="profile-btn" title="Profile"></button>
+        <div class="profile-dropdown" id="profile-dropdown">
+          <div class="profile-dropdown-header">
+            <div id="profile-dropdown-avatar"></div>
+            <div>
+              <div class="profile-dropdown-name" id="profile-dropdown-name">—</div>
+              <div class="profile-dropdown-email" id="profile-dropdown-email">—</div>
             </div>
-            <button id="logout-btn" class="profile-dropdown-item">Log out</button>
           </div>
+          <button id="logout-btn" class="profile-dropdown-item">Log out</button>
         </div>
       </div>
     </div>
     <div class="sidebar-search">
-      <input type="text" id="user-search" placeholder="Find someone to whisper to…">
+      <input type="text" id="user-search" placeholder="🔍  Search people to start whispering…">
     </div>
     <div id="search-results" class="convo-list" style="display:none; border-bottom:1px solid rgba(255,255,255,0.05); max-height:220px;"></div>
     <div class="convo-list" id="convo-list"></div>
