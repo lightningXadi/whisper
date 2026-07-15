@@ -15,3 +15,17 @@ function playEnterTransition() {
     setTimeout(() => { resolve(); }, 1400);
   });
 }
+
+// Chrome autofill doesn't reliably trigger :not(:placeholder-shown), which
+// left floating labels sitting on top of autofilled text. This catches the
+// autofill animation hook (see style.css) and floats the label properly.
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.field input').forEach((input) => {
+    input.addEventListener('animationstart', (e) => {
+      if (e.animationName === 'onAutoFillStart') input.classList.add('autofilled');
+    });
+    input.addEventListener('input', () => {
+      if (!input.value) input.classList.remove('autofilled');
+    });
+  });
+});
