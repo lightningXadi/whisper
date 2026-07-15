@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Whisper — Say less. Mean more.</title>
+<script>
+  // Already have a valid session? Skip the landing page entirely — do this
+  // before anything renders so there's no flash of the landing page first.
+  if (localStorage.getItem('whisper_token')) {
+    window.location.replace('chat.html');
+  }
+</script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -11,7 +18,7 @@
 
 <nav class="landing-nav">
   <div class="landing-wordmark">🦊 Whisper</div>
-  <div style="display:flex; gap:24px; align-items:center;">
+  <div class="landing-nav-actions">
     <a href="login.html" class="btn btn-ghost">Log in</a>
     <a href="signup.html" class="btn btn-primary">Sign up</a>
   </div>
