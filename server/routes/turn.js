@@ -38,7 +38,7 @@ router.get('/', requireAuth, async (req, res) => {
     cache = { servers: iceServers, expiresAt: Date.now() + 4 * 60 * 60 * 1000 };
     res.json({ iceServers, turnConfigured: true });
   } catch (err) {
-    console.error('Failed to fetch TURN credentials:', err.message);
+    console.error('Failed to fetch TURN credentials:', err.message, err.cause || '');
     res.json({ iceServers: STUN_ONLY_FALLBACK, turnConfigured: false });
   }
 });
