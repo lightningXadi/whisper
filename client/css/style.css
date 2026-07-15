@@ -134,6 +134,25 @@ input, textarea { font-family: inherit; }
 .field input:focus ~ label, .field input:not(:placeholder-shown) ~ label {
   transform: translateY(-20px); font-size: 12px; color: var(--accent);
 }
+.field input.autofilled ~ label {
+  transform: translateY(-20px); font-size: 12px; color: var(--accent);
+}
+/* Chrome forces its own blue autofill background + text color, which sat
+   underneath our floating label and caused the overlapping-text look. Force
+   it to match our parchment surface and dark text instead. */
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-primary-dark);
+  -webkit-box-shadow: 0 0 0 1000px var(--surface-light) inset;
+  box-shadow: 0 0 0 1000px var(--surface-light) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+/* Detection hook: Chrome doesn't reliably trigger :not(:placeholder-shown)
+   for autofilled fields, so we use this animation trick + a JS listener
+   (see transition.js) to catch autofill and float the label reliably. */
+@keyframes onAutoFillStart { from {} to {} }
+.field input:-webkit-autofill { animation-name: onAutoFillStart; }
 .auth-submit { width: 100%; margin-top: 8px; }
 .auth-links { display: flex; justify-content: space-between; margin-top: 18px; font-size: 13px; color: #6b6355; }
 .auth-error {
