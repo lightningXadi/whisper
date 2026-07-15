@@ -13,21 +13,41 @@
 // used for chat. Reads `window.socket` (set by chat.js) directly instead of
 // polling — avoids cross-script timing issues entirely.
 
-const RTC_CONFIG = {
+// STUN-only default — works when both sides are on simple/same networks.
+// Calls across different networks (home WiFi <-> mobile data, two different
+// WiFis, carrier-grade NAT) need a TURN relay too; that's fetched fresh from
+// our own backend below (/api/turn-credentials) rather than hardcoded here,
+// since free TURN providers rotate/expire their credentials.
+let RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    // TURN relay — required when both sides are behind carrier-grade NAT
-    // (very common on Indian mobile networks like Jio/Airtel). Without this,
-    // calls can "ring" successfully (signaling works) but no audio ever
-    // flows, because the direct STUN-only P2P connection silently fails.
-    { urls: 'stun:openrelay.metered.ca:80' },
-    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+    { urls: 'stun:stun1.l.google.com:19302' }
   ],
   iceCandidatePoolSize: 4
 };
+
+async function refreshRtcConfig() {
+  try {
+    const base = window.WHISPER_API_URL || '';
+    const token = localStorage.getItem('whisper_token') || localStorage.getItem('token');
+    const res = await fetch(`${base}/api/turn-credentials`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data.iceServers) && data.iceServers.length) {
+      RTC_CONFIG = { iceServers: data.iceServers, iceCandidatePoolSize: 4 };
+    }
+    if (!data.turnConfigured) {
+      console.warn('No TURN server configured on the backend yet — calls will only work when both sides are on friendly/same networks. See README for setup.');
+    }
+  } catch (err) {
+    console.warn('Could not fetch TURN credentials, falling back to STUN-only:', err.message);
+  }
+}
+// Fetch once at load, and again right before each outgoing/incoming call
+// picks up the peer connection, so credentials never go stale mid-session.
+refreshRtcConfig();
 
 let pc = null;
 let localStream = null;
@@ -112,6 +132,7 @@ async function startOutgoingCall(peerId, peerName, peerAvatar, conversationId) {
     showCallOverlay(peerName, peerAvatar, 'Reaching Out', 'Calling…');
     document.getElementById('call-timer').textContent = '';
 
+    await refreshRtcConfig();
     localStream = await getMic();
     pc = createPeerConnection(peerId);
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
@@ -136,6 +157,7 @@ async function acceptIncomingCall() {
 
   try {
     showCallOverlay(fromName, fromAvatar, 'In Communion', 'Echoing…');
+    await refreshRtcConfig();
     localStream = await getMic();
     pc = createPeerConnection(fromUserId);
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
