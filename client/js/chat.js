@@ -51,6 +51,7 @@ socket.on('connect_error', (err) => {
 let activeConversation = null; // { id, otherUser }
 let conversations = [];        // cached list from server
 let typingTimeout = null;
+let conversationRequestId = 0; // guards against stale fetches when switching chats fast
 
 const els = {
   convoList: document.getElementById('convo-list'),
@@ -109,6 +110,7 @@ function renderConvoList() {
 }
 
 async function openConversation(convo) {
+  const requestId = ++conversationRequestId;
   activeConversation = { id: convo._id, otherUser: otherParticipant(convo) };
   els.emptyState.style.display = 'none';
   els.activeChat.style.display = 'flex';
@@ -120,7 +122,12 @@ async function openConversation(convo) {
   els.headerAvatar.innerHTML = avatarHTML(other.avatarSeed, 'sm');
   setHeaderStatus(!!other.isOnline);
 
+  // Clear immediately — don't wait for the fetch, otherwise the previous
+  // chat's messages stay visible under the new header for a moment.
+  els.messages.innerHTML = '';
+
   const history = await Api.messages(convo._id);
+  if (requestId !== conversationRequestId) return; // a newer chat was opened meanwhile — drop this stale response
   els.messages.innerHTML = '';
   history.forEach(renderMessage);
   scrollToBottom();
