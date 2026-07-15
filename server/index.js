@@ -8,6 +8,7 @@ const { Server } = require('socket.io');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const conversationRoutes = require('./routes/conversations');
+const turnRoutes = require('./routes/turn');
 const initSocket = require('./socket');
 
 const app = express();
@@ -22,6 +23,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true, service: 'whisper-serv
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/conversations', conversationRoutes);
+app.use('/api/turn-credentials', turnRoutes);
 
 const io = new Server(server, {
   cors: { origin: CLIENT_URL, credentials: true }
